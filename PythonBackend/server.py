@@ -63,8 +63,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=0,
-        help="Port to bind to (0 = random, ignored if --socket is provided)",
+        default=8765,
+        help="Port to bind to (default: 8765, ignored if --socket is provided)",
     )
     args = parser.parse_args()
 
