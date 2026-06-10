@@ -101,8 +101,14 @@ ls "$APP_PATH/Contents/Resources/" | head -10
 echo ""
 echo "Python runtime: $(du -sh "$RESOURCES_DIR/python-runtime" | cut -f1)"
 
-# Step 5: Test launch (optional, requires terminal)
+# Step 5: Ad-hoc sign + remove quarantine for local execution
 echo ""
+	echo ""
+	echo "[4/4] Ad-hoc signing and removing quarantine..."
+	xattr -cr "$APP_PATH"
+	codesign --force --deep --sign - "$APP_PATH" 2>/dev/null
+	echo "Signature: OK"
+
 echo "=== Packaging Complete ==="
 echo "App bundle: $APP_PATH"
 echo ""
