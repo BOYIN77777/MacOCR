@@ -72,6 +72,7 @@ echo "  [4c] Installing remaining packages..."
     aiohttp \
     Pillow \
     img2pdf \
+	    pyobjc-framework-Vision \
     magic-pdf \
     doclayout_yolo \
     rapid-table \
