@@ -24,7 +24,7 @@ transformers==4.49.0
 
 # magic-pdf deps
 doclayout_yolo>=0.0.2b1
-rapid-table>=1.0.5
+rapid-table>=1.0.5,<2.0
 modelscope>=1.37
 timm>=1.0
 ultralytics>=8.4

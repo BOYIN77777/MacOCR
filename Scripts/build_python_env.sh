@@ -75,7 +75,7 @@ echo "  [4c] Installing remaining packages..."
 	    pyobjc-framework-Vision \
     magic-pdf \
     doclayout_yolo \
-    rapid-table \
+    rapid-table>=1.0.5,<2.0 \
     modelscope \
     timm \
     ultralytics \
