@@ -29,7 +29,7 @@ struct MarkdownPreviewView: View {
                     .font(.body.monospaced())
                     .frame(minWidth: 300)
             } else {
-                MarkdownWebView(markdown: editedContent.isEmpty ? currentMarkdown : editedContent)
+                MarkdownWebView(markdown: currentMarkdown)
                     .frame(minWidth: 300)
             }
 
