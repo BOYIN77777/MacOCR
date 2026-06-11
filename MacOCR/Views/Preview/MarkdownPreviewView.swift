@@ -153,16 +153,17 @@ struct PDFPreviewView: NSViewRepresentable {
     func makeNSView(context: Context) -> PDFKitView {
         let view = PDFKitView()
         view.loadPDF(from: url)
-        context.coordinator.observer = view.observePageChanges { page in
-            DispatchQueue.main.async {
-                currentPage = page
-            }
+        // Observe PDF page changes via PDFKit notification (more reliable than KVO)
+        context.coordinator.observer = NotificationCenter.default.addObserver(
+            forName: .PDFViewPageChanged, object: view.pdfView, queue: .main
+        ) { _ in
+            currentPage = view.currentPageIndex
         }
         return view
     }
 
     func updateNSView(_ nsView: PDFKitView, context: Context) {
-        // Only navigate if the target page differs (prevents feedback loop)
+        // Navigate PDF when toolbar changes the page
         if nsView.currentPageIndex != currentPage {
             nsView.goToPage(currentPage)
         }
@@ -171,12 +172,12 @@ struct PDFPreviewView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     class Coordinator {
-        var observer: NSKeyValueObservation?
+        var observer: Any?
     }
 }
 
 final class PDFKitView: NSView {
-    private let pdfView = PDFView()
+    let pdfView = PDFView()
 
     var pageCount: Int { pdfView.document?.pageCount ?? 0 }
     var currentPageIndex: Int {
@@ -214,14 +215,6 @@ final class PDFKitView: NSView {
               pageIndex >= 0, pageIndex < doc.pageCount,
               let page = doc.page(at: pageIndex) else { return }
         pdfView.go(to: page)
-    }
-
-    func observePageChanges(handler: @escaping (Int) -> Void) -> NSKeyValueObservation {
-        pdfView.observe(\.currentPage, options: [.new]) { pdfView, _ in
-            if let doc = pdfView.document, let page = pdfView.currentPage {
-                handler(doc.index(for: page))
-            }
-        }
     }
 }
 
