@@ -549,6 +549,33 @@ class LightweightPipeline:
         else:
             return {'doc_type': 'text', 'needs_table': False, 'needs_formula': False}
 
+    # ── image file processing ────────────────────────────────────────
+
+    def _process_image(
+        self, image_path: str, output_dir: str,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> str:
+        """OCR a single image file (PNG, JPG, etc.) — no PDF processing."""
+        img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError(f"Cannot read image: {image_path}")
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        self._notify(progress_callback, PipelineProgress(
+            phase="ocr", current=0, total=1, message="Processing image..."
+        ))
+        markdown = self._ocr_full_page(img_rgb)
+
+        output_path = os.path.join(output_dir, "output.md")
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(markdown)
+
+        self._notify(progress_callback, PipelineProgress(
+            phase="done", current=1, total=1,
+            message=f"Complete: 1 page in {0:.0f}s"
+        ))
+        return output_path
+
     # ── main pipeline ─────────────────────────────────────────────────
 
     def process(
@@ -564,6 +591,12 @@ class LightweightPipeline:
         are almost always uniformly scanned or text-based.
         """
         t_total = time.time()
+
+        # ── Image files: single-page OCR, no preflight ────────────────
+        ext = os.path.splitext(pdf_path)[1].lower()
+        if ext in ('.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.heic', '.webp'):
+            return self._process_image(pdf_path, output_dir, progress_callback)
+
         fitz_doc = fitz.open(pdf_path)
         total_pages = fitz_doc.page_count
         os.makedirs(output_dir, exist_ok=True)
