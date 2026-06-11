@@ -31,6 +31,15 @@ struct MarkdownPreviewView: View {
         return "\(currentPage + 1)\(marker) / \(pageCount)"
     }
 
+    /// Full markdown content with all edits merged in
+    private var currentFullContent: String {
+        var merged = pages
+        for (idx, text) in pageEdits {
+            if idx < merged.count { merged[idx] = text }
+        }
+        return merged.joined(separator: "\n\n---\n\n")
+    }
+
     var body: some View {
         HSplitView {
             // Left: Markdown preview or editor
@@ -82,17 +91,16 @@ struct MarkdownPreviewView: View {
                 }
             }
 
-            // Save button (visible when there are unsaved edits)
-            if isEditing && !dirtyPages.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        saveEdits()
-                    } label: {
-                        Label("保存 (\(dirtyPages.count))", systemImage: "square.and.arrow.down")
-                            .foregroundStyle(.blue)
-                    }
-                    .help("保存所有编辑到文件")
+            // Save button — always visible, disabled when no edits
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    saveEdits()
+                } label: {
+                    Label(dirtyPages.isEmpty ? "保存" : "保存 (\(dirtyPages.count))",
+                          systemImage: "square.and.arrow.down")
                 }
+                .disabled(dirtyPages.isEmpty)
+                .help(dirtyPages.isEmpty ? "无修改" : "保存所有编辑")
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -103,9 +111,10 @@ struct MarkdownPreviewView: View {
                 .tint(dirtyPages.isEmpty ? .accentColor : .blue)
             }
 
+            // Export uses the live edited content, not stale task.markdownContent
             ToolbarItem(placement: .primaryAction) {
                 ExportMenu(task: task, markdownContent: Binding(
-                    get: { task.markdownContent ?? "" },
+                    get: { currentFullContent },
                     set: { _ in }
                 ))
             }
@@ -115,21 +124,28 @@ struct MarkdownPreviewView: View {
     // MARK: - Save
 
     private func saveEdits() {
-        // Merge edits back into pages
-        var merged = pages
-        for (idx, text) in pageEdits {
-            if idx < merged.count {
-                merged[idx] = text
-            }
-        }
-        let fullContent = merged.joined(separator: "\n\n---\n\n")
+        guard !dirtyPages.isEmpty else { return }
+
+        let fullContent = currentFullContent
 
         // Write to output.md
         if let outputPath = task.outputPath {
-            try? fullContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
+            do {
+                try fullContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
+            } catch {
+                // Fallback: save to desktop
+                let fallback = NSHomeDirectory() + "/Desktop/" +
+                    ((task.fileName as NSString).deletingPathExtension) + "_ocr_edited.md"
+                try? fullContent.write(toFile: fallback, atomically: true, encoding: .utf8)
+            }
+        } else {
+            // No output path — save to desktop
+            let desktop = NSHomeDirectory() + "/Desktop/" +
+                ((task.fileName as NSString).deletingPathExtension) + "_ocr.md"
+            try? fullContent.write(toFile: desktop, atomically: true, encoding: .utf8)
         }
 
-        // Also update the task's in-memory content
+        // Update the task's in-memory content
         if let idx = TaskQueueManager.shared.tasks.firstIndex(where: { $0.id == task.id }) {
             TaskQueueManager.shared.tasks[idx].markdownContent = fullContent
         }
