@@ -6,73 +6,77 @@ struct MarkdownPreviewView: View {
     let task: OCRTask
     @State private var isEditing = false
     @State private var currentPage: Int = 0
-    @State private var pageEdits: [Int: String] = [:]   // page index → edited text
-    @State private var dirtyPages: Set<Int> = []         // pages with unsaved edits
+    @State private var editText: String = ""         // current TextEditor content
+    @State private var pageEdits: [Int: String] = [:]
+    @State private var dirtyPages: Set<Int> = []
+    @State private var didInitialLoad = false
 
-    private var isPDF: Bool {
-        task.filePath.lowercased().hasSuffix(".pdf")
-    }
+    private var isPDF: Bool { task.filePath.lowercased().hasSuffix(".pdf") }
+
+    private let separator = "\n\n---\n\n"
 
     private var pages: [String] {
-        (task.markdownContent ?? "").components(separatedBy: "\n\n---\n\n")
+        (task.markdownContent ?? "").components(separatedBy: separator)
     }
     private var pageCount: Int { max(pages.count, 1) }
 
-    /// Current page text (edited or original)
-    private var currentPageText: String {
+    /// Page text shown in preview (edited or original)
+    private var displayText: String {
+        if isEditing { return editText }
         if let edit = pageEdits[currentPage] { return edit }
         guard currentPage >= 0, currentPage < pages.count else { return "" }
         return pages[currentPage]
     }
 
-    /// Page label with dirty marker
     private var pageLabel: String {
         let marker = dirtyPages.contains(currentPage) ? "*" : ""
         return "\(currentPage + 1)\(marker) / \(pageCount)"
     }
 
-    /// Full markdown content with all edits merged in
-    private var currentFullContent: String {
-        var merged = pages
-        for (idx, text) in pageEdits {
-            if idx < merged.count { merged[idx] = text }
-        }
-        return merged.joined(separator: "\n\n---\n\n")
+    /// Load editor text for the current page
+    private func loadEditText() {
+        editText = pageEdits[currentPage] ?? (currentPage < pages.count ? pages[currentPage] : "")
+        didInitialLoad = true
+    }
+
+    /// Mark current page as edited
+    private func markDirty() {
+        guard didInitialLoad else { return }
+        pageEdits[currentPage] = editText
+        dirtyPages.insert(currentPage)
+    }
+
+    /// Full content with all edits merged
+    private var mergedContent: String {
+        var result = pages
+        for (idx, text) in pageEdits { if idx < result.count { result[idx] = text } }
+        return result.joined(separator: separator)
     }
 
     var body: some View {
         HSplitView {
-            // Left: Markdown preview or editor
             if isEditing {
-                TextEditor(text: Binding(
-                    get: { currentPageText },
-                    set: { newValue in
-                        pageEdits[currentPage] = newValue
-                        dirtyPages.insert(currentPage)
-                    }
-                ))
-                .font(.body.monospaced())
-                .frame(minWidth: 300)
+                TextEditor(text: $editText)
+                    .font(.body.monospaced())
+                    .frame(minWidth: 300)
+                    .onChange(of: currentPage) { _, _ in loadEditText() }
+                    .onChange(of: editText) { _, _ in markDirty() }
             } else {
-                MarkdownWebView(markdown: currentPageText)
+                MarkdownWebView(markdown: displayText)
                     .frame(minWidth: 300)
             }
 
-            // Right: Preview (PDF or image)
             if FileManager.default.fileExists(atPath: task.filePath) {
                 if isPDF {
-                    PDFPreviewView(
-                        url: URL(fileURLWithPath: task.filePath),
-                        currentPage: $currentPage
-                    )
-                    .frame(minWidth: 300, minHeight: 400)
+                    PDFPreviewView(url: URL(fileURLWithPath: task.filePath), currentPage: $currentPage)
+                        .frame(minWidth: 300, minHeight: 400)
                 } else {
                     ImagePreviewView(url: URL(fileURLWithPath: task.filePath))
                         .frame(minWidth: 300, minHeight: 400)
                 }
             }
         }
-        .id(task.id)  // Force rebuild on task switch
+        .id(task.id)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
@@ -91,7 +95,6 @@ struct MarkdownPreviewView: View {
                 }
             }
 
-            // Save button — always visible, disabled when no edits
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     saveEdits()
@@ -100,21 +103,30 @@ struct MarkdownPreviewView: View {
                           systemImage: "square.and.arrow.down")
                 }
                 .disabled(dirtyPages.isEmpty)
-                .help(dirtyPages.isEmpty ? "无修改" : "保存所有编辑")
             }
 
             ToolbarItem(placement: .primaryAction) {
                 Toggle(isOn: $isEditing) {
-                    Label(isEditing && !dirtyPages.isEmpty ? "编辑 *" : "编辑",
+                    Label(dirtyPages.isEmpty ? "编辑" : "编辑 *",
                           systemImage: dirtyPages.isEmpty ? "pencil" : "pencil.circle.fill")
                 }
                 .tint(dirtyPages.isEmpty ? .accentColor : .blue)
+                .onChange(of: isEditing) { _, editing in
+                    if editing {
+                        loadEditText()
+                    } else {
+                        // Save current page edits when toggling out of edit mode
+                        if didInitialLoad, editText != (pageEdits[currentPage] ?? pages[currentPage]) {
+                            pageEdits[currentPage] = editText
+                            dirtyPages.insert(currentPage)
+                        }
+                    }
+                }
             }
 
-            // Export uses the live edited content, not stale task.markdownContent
             ToolbarItem(placement: .primaryAction) {
                 ExportMenu(task: task, markdownContent: Binding(
-                    get: { currentFullContent },
+                    get: { mergedContent },
                     set: { _ in }
                 ))
             }
@@ -124,37 +136,33 @@ struct MarkdownPreviewView: View {
     // MARK: - Save
 
     private func saveEdits() {
-        guard !dirtyPages.isEmpty else { return }
-
-        let fullContent = currentFullContent
-
-        // Write to output.md
-        if let outputPath = task.outputPath {
-            let url = URL(fileURLWithPath: outputPath)
-            do {
-                try fullContent.write(to: url, atomically: true, encoding: .utf8)
-            } catch {
-                // Fallback: save to desktop
-                let name = (task.fileName as NSString).deletingPathExtension + "_ocr_edited.md"
-                let fallback = URL(fileURLWithPath: NSHomeDirectory())
-                    .appendingPathComponent("Desktop").appendingPathComponent(name)
-                try? fullContent.write(to: fallback, atomically: true, encoding: .utf8)
-            }
-        } else {
-            // No output path — save to desktop
-            let name = (task.fileName as NSString).deletingPathExtension + "_ocr.md"
-            let desktop = URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Desktop").appendingPathComponent(name)
-            try? fullContent.write(to: desktop, atomically: true, encoding: .utf8)
+        // Flush current page edits first
+        if didInitialLoad, isEditing {
+            pageEdits[currentPage] = editText
+            dirtyPages.insert(currentPage)
         }
 
-        // Update the task's in-memory content
+        guard !dirtyPages.isEmpty else { return }
+        let content = mergedContent
+
+        if let path = task.outputPath {
+            let url = URL(fileURLWithPath: path)
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        } else {
+            let name = (task.fileName as NSString).deletingPathExtension + "_ocr.md"
+            let url = URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Desktop").appendingPathComponent(name)
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
+
+        // Update in-memory
         if let idx = TaskQueueManager.shared.tasks.firstIndex(where: { $0.id == task.id }) {
-            TaskQueueManager.shared.tasks[idx].markdownContent = fullContent
+            TaskQueueManager.shared.tasks[idx].markdownContent = content
         }
 
         dirtyPages.removeAll()
         pageEdits.removeAll()
+        didInitialLoad = false
     }
 }
 
