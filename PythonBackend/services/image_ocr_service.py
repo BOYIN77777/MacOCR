@@ -37,7 +37,7 @@ async def process_image(
 
     pdf_path = os.path.join(temp_dir, "page.pdf")
     with open(pdf_path, "wb") as f:
-        f.write(img2pdf.convert(img.filename or image_path))
+        f.write(img2pdf.convert(image_path))
 
     await progress_tracker.set_processing(total_pages=1)
 
