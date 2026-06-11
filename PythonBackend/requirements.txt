@@ -13,6 +13,9 @@ aiofiles>=25.1,<26
 aiohttp>=3.14,<4.0
 img2pdf>=0.6,<1.0
 
+# Apple Vision OCR (macOS native)
+pyobjc-framework-Vision>=12.0
+
 # OCR Engine
 magic-pdf==1.3.12
 

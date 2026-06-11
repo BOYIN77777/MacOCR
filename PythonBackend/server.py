@@ -3,6 +3,11 @@ import argparse
 import logging
 from contextlib import asynccontextmanager
 
+# Ensure working directory is writable (app bundle is read-only)
+_writable_dir = os.path.expanduser("~/Library/Application Support/MacOCR")
+os.makedirs(_writable_dir, exist_ok=True)
+os.chdir(_writable_dir)
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
