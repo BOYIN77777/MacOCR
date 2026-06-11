@@ -114,3 +114,15 @@ echo "App bundle: $APP_PATH"
 echo ""
 echo "To test: open $APP_PATH"
 echo "To sign and notarize: bash Scripts/sign_and_notarize.sh $APP_PATH"
+
+# Step 6: Sync latest PythonBackend source into runtime
+echo ""
+echo "[5/5] Syncing latest PythonBackend source..."
+PROJECT_PYBACKEND="$(dirname "$SCRIPT_DIR")/PythonBackend"
+RUNTIME_PYBACKEND="$RESOURCES_DIR/python-runtime/lib/python3.12/site-packages/PythonBackend"
+if [ -d "$PROJECT_PYBACKEND" ]; then
+    rsync -a --delete "$PROJECT_PYBACKEND/" "$RUNTIME_PYBACKEND/"
+    echo "PythonBackend synced"
+else
+    echo "WARNING: PythonBackend source not found at $PROJECT_PYBACKEND"
+fi
