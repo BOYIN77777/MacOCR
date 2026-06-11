@@ -123,6 +123,9 @@ RUNTIME_PYBACKEND="$RESOURCES_DIR/python-runtime/lib/python3.12/site-packages/Py
 if [ -d "$PROJECT_PYBACKEND" ]; then
     rsync -a --delete "$PROJECT_PYBACKEND/" "$RUNTIME_PYBACKEND/"
     echo "PythonBackend synced"
+
+# Ensure Vision framework is installed
+"$RESOURCES_DIR/python-runtime/bin/python3.12" -m pip install pyobjc-framework-Vision --quiet 2>/dev/null || true
 else
     echo "WARNING: PythonBackend source not found at $PROJECT_PYBACKEND"
 fi
