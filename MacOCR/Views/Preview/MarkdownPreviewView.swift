@@ -130,19 +130,22 @@ struct MarkdownPreviewView: View {
 
         // Write to output.md
         if let outputPath = task.outputPath {
+            let url = URL(fileURLWithPath: outputPath)
             do {
-                try fullContent.write(toFile: outputPath, atomically: true, encoding: .utf8)
+                try fullContent.write(to: url, atomically: true, encoding: .utf8)
             } catch {
                 // Fallback: save to desktop
-                let fallback = NSHomeDirectory() + "/Desktop/" +
-                    ((task.fileName as NSString).deletingPathExtension) + "_ocr_edited.md"
-                try? fullContent.write(toFile: fallback, atomically: true, encoding: .utf8)
+                let name = (task.fileName as NSString).deletingPathExtension + "_ocr_edited.md"
+                let fallback = URL(fileURLWithPath: NSHomeDirectory())
+                    .appendingPathComponent("Desktop").appendingPathComponent(name)
+                try? fullContent.write(to: fallback, atomically: true, encoding: .utf8)
             }
         } else {
             // No output path — save to desktop
-            let desktop = NSHomeDirectory() + "/Desktop/" +
-                ((task.fileName as NSString).deletingPathExtension) + "_ocr.md"
-            try? fullContent.write(toFile: desktop, atomically: true, encoding: .utf8)
+            let name = (task.fileName as NSString).deletingPathExtension + "_ocr.md"
+            let desktop = URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Desktop").appendingPathComponent(name)
+            try? fullContent.write(to: desktop, atomically: true, encoding: .utf8)
         }
 
         // Update the task's in-memory content
