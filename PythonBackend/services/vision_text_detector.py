@@ -170,23 +170,46 @@ def _detect_via_vision(
             pass
 
 
+# Default margins for header/footer/side-text exclusion (percentage of page)
+CONTENT_MARGIN_TOP = 0.06     # 6% from top → excludes headers
+CONTENT_MARGIN_BOTTOM = 0.06  # 6% from bottom → excludes footers
+CONTENT_MARGIN_LEFT = 0.08    # 8% from left → excludes vertical margin text
+CONTENT_MARGIN_RIGHT = 0.08   # 8% from right → excludes vertical margin text
+
+
 def detect_text_simple(image: np.ndarray, min_confidence: float = 0.3) -> str:
     """Detect text and return as a single newline-joined string.
 
-    Convenience wrapper for pipeline use. Filters single-character noise
-    (Vision produces many low-confidence single-char artifacts on scans).
-    Multi-char strings at low confidence are kept — they're usually real
-    text (e.g., decorative English labels).
+    Filters:
+    - Single-char low-confidence noise
+    - Header/footer regions (top/bottom 6% of page)
+    - Vertical side text (left/right 8% of page)
     """
     regions = detect_text(image, min_confidence=min_confidence)
     if not regions:
         return ""
 
+    h, w = image.shape[:2]
+
+    # Compute content area bounds
+    x_min = int(w * CONTENT_MARGIN_LEFT)
+    x_max = int(w * (1 - CONTENT_MARGIN_RIGHT))
+    y_min = int(h * CONTENT_MARGIN_TOP)
+    y_max = int(h * (1 - CONTENT_MARGIN_BOTTOM))
+
     filtered = []
     for r in regions:
-        # Single-char: only keep if Vision is very confident
+        # Skip single-char low-confidence noise
         if len(r.text) == 1 and r.confidence < 0.8:
             continue
+
+        # Skip header/footer/side regions — use center point, not bounds
+        rx, ry, rw, rh = r.bbox
+        cx = rx + rw / 2
+        cy = ry + rh / 2
+        if cx < x_min or cx > x_max or cy < y_min or cy > y_max:
+            continue
+
         filtered.append(r.text)
 
     return "\n".join(filtered)
