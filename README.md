@@ -1,6 +1,20 @@
 # MacOCR
 
-macOS 原生 OCR 工具，将 PDF 转换为 Markdown。支持扫描件、文字型、混合型（表格+公式）文档。
+macOS 原生 OCR 工具，将 PDF 和图片转换为 Markdown。支持扫描件、文字型、混合型（表格+公式）文档。
+
+## 功能特性
+
+- **文档 OCR**：扫描件 PDF → Apple Vision OCR（ANE 加速，0.5s/页）
+- **文字提取**：内嵌文字 PDF → fitz 直接提取（0.04ms/页，瞬间）
+- **图片 OCR**：PNG / JPG / TIFF / BMP / HEIC / WebP 截图识别
+- **表格识别**：RapidTable → HTML 表格输出
+- **公式识别**：MFD + MFR (Unimernet) → LaTeX 输出
+- **页眉页脚过滤**：自动排除边缘区域文字污染
+- **逐页预览**：Markdown 渲染 + PDF/图片原文左右对比
+- **分页联动**：翻页同步，Markdown 与原文页码对应
+- **编辑保存**：逐页编辑 OCR 结果，保存回写文件
+- **进度条**：实时显示页码进度 + 阶段名称 + 百分比
+- **导出**：Markdown / 纯文本 / PDF 三种格式
 
 ## 架构
 
@@ -24,9 +38,9 @@ macOS 原生 OCR 工具，将 PDF 转换为 Markdown。支持扫描件、文字�
   ├─ text      → fitz 提取（瞬间）
   ├─ table     → RapidTable → HTML
   └─ formula   → MFD+MFR → LaTeX（3页无输出→自适应切 text）
-```
 
-**核心设计**：文档级预检（非逐页判断）+ 按需加载模型 + 自适应模式切换。
+图片（PNG/JPG等）→ cv2.imread → Vision OCR 单页处理
+```
 
 ### 已移除的组件
 
@@ -64,8 +78,9 @@ open MacOCR.xcodeproj
 
 | 场景 | 页数 | 耗时 | 内存 | 加载模型 |
 |------|------|------|------|---------|
-| 扫描教科书 | 422 | 4.5min | ~4.6GB | 无 |
+| 扫描教科书 | 422 | 5min | ~4.6GB | 无 |
 | 文字型 PDF | 3 | 0.4s | — | 无 |
+| 图片 PNG/JPG | 1 | 0.5s | — | 无 |
 | 混合论文 | 40 | ~30s | ~5GB | MFD+MFR |
 | 表格型 | 5 | 6.6s | ~5GB | RapidTable |
 
@@ -73,34 +88,45 @@ open MacOCR.xcodeproj
 
 ```
 MacOCR/
-├── MacOCR/                    SwiftUI 应用
-│   ├── App/                   入口
-│   ├── Models/                数据模型
-│   ├── Views/                 UI 视图（导入/队列/预览/导出/设置）
-│   └── Services/              核心服务
-│       ├── PythonBackendManager   后端生命周期管理
-│       ├── OCRServiceClient       HTTP 客户端
-│       ├── VisionOCRService       Apple Vision OCR（快速模式）
-│       └── TaskQueueManager       任务队列调度
-├── PythonBackend/             FastAPI 后端
-│   ├── server.py              入口
+├── MacOCR/                        SwiftUI 应用
+│   ├── App/                       入口
+│   ├── Models/
+│   │   └── OCRTask.swift          任务数据模型
+│   ├── Views/
+│   │   ├── MainWindow/            主窗口布局
+│   │   ├── Import/                拖拽导入区
+│   │   ├── Queue/                 任务列表 + 进度条
+│   │   ├── Preview/               Markdown/PDF/图片预览 + 编辑
+│   │   └── Export/                导出菜单
+│   └── Services/
+│       ├── PythonBackendManager   后端生命周期（自动启动/停止）
+│       ├── OCRServiceClient       HTTP 客户端 + multipart 上传
+│       ├── TaskQueueManager       任务队列调度 + 大文件确认
+│       └── VisionOCRService       Apple Vision OCR（快速模式）
+├── PythonBackend/                 FastAPI 后端
+│   ├── server.py                  入口（工作目录自动切到可写位置）
 │   ├── api/
-│   │   └── routes_ocr.py       REST API 路由
+│   │   ├── routes_ocr.py          上传 + OCR 路由
+│   │   ├── routes_models.py       模型状态路由
+│   │   └── routes_health.py       健康检查路由
 │   ├── services/
 │   │   ├── lightweight_pipeline.py   核心管道 (~700行)
-│   │   ├── vision_text_detector.py   Apple Vision OCR + 页面分类
-│   │   ├── pdf_ocr_service.py        FastAPI 集成层
-│   │   └── image_ocr_service.py      图片 OCR
+│   │   ├── vision_text_detector.py   Vision OCR + 页眉页脚过滤 + 页面分类
+│   │   ├── pdf_ocr_service.py        PDF OCR 集成层
+│   │   ├── image_ocr_service.py      图片→PDF 转换 + OCR
+│   │   ├── model_manager.py          模型状态检查
+│   │   └── task_manager.py           后端任务管理
 │   └── core/
-│       ├── progress.py         进度追踪 + 流式端点
-│       ├── config.py           配置管理
-│       └── exceptions.py       异常定义
-└── Scripts/                   构建和打包
-    ├── build_python_env.sh    构建可重定位 Python 运行时
-    ├── patch_magic_pdf.sh     修复 magic-pdf 兼容性问题
-    ├── package_app.sh         打包 .app
-    ├── bundle_dylibs.sh       修复原生库路径
-    └── sign_and_notarize.sh   签名 + 公证
+│       ├── progress.py             进度追踪
+│       ├── config.py               配置管理
+│       └── exceptions.py           异常定义
+└── Scripts/                       构建和打包
+    ├── build_python_env.sh        构建可重定位 Python 运行时
+    ├── patch_magic_pdf.sh         修复 magic-pdf 兼容性问题
+    ├── package_app.sh             打包 .app（含自动签名）
+    ├── bundle_dylibs.sh           修复原生库路径
+    ├── create_dmg.sh              生成 DMG 安装包
+    └── sign_and_notarize.sh       签名 + 公证
 ```
 
 ## API 接口
@@ -109,7 +135,7 @@ MacOCR/
 |------|------|------|
 | GET | `/api/v1/health` | 健康检查 |
 | GET | `/api/v1/models/status` | 模型状态 |
-| POST | `/api/v1/ocr/upload?method=auto` | 上传文件并 OCR |
+| POST | `/api/v1/ocr/upload?method=auto` | 上传文件并 OCR（支持 PDF/PNG/JPG/TIFF/BMP/HEIC/WebP） |
 | GET | `/api/v1/ocr/tasks/{id}` | 查询任务进度（含 `completed_pages` + `latest_content`） |
 | DELETE | `/api/v1/ocr/tasks/{id}` | 取消任务 |
 
@@ -118,6 +144,11 @@ MacOCR/
 ```bash
 bash Scripts/build_python_env.sh
 bash Scripts/package_app.sh
+
+# .app 在 build/DerivedData/Build/Products/Release/MacOCR.app
+
+# 可选：生成 DMG + 签名公证
+bash Scripts/create_dmg.sh
 DEVELOPER_ID="Developer ID Application: Name (TEAM)" \
   bash Scripts/sign_and_notarize.sh build/DerivedData/Build/Products/Release/MacOCR.app
 ```
