@@ -72,15 +72,31 @@ struct TaskRowView: View {
 
                 Spacer()
 
+                // Per-task action button
                 if task.status == .processing {
                     Button {
                         queueManager.cancelTask(task.id)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
+                            .font(.title3)
                     }
                     .buttonStyle(.plain)
-                    .help("取消")
+                    .help("取消任务")
+                } else {
+                    Button {
+                        queueManager.removeTask(task.id)
+                        if queueManager.tasks.first(where: { $0.id == task.id }) == nil,
+                           let sel = queueManager.tasks.first?.id {
+                            // If current was removed, select next available
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("移除任务")
                 }
             }
 
@@ -117,18 +133,6 @@ struct TaskRowView: View {
         .padding(.vertical, 4)
     }
 
-    private var statusText: String {
-        switch task.status {
-        case .pending: "等待中"
-        case .processing: task.stage ?? "处理中"
-        case .completed:
-            if task.totalPages > 0 { "\(task.totalPages) 页完成" }
-            else { "完成" }
-        case .failed: "失败"
-        case .cancelled: "已取消"
-        }
-    }
-
     private var statusIcon: String {
         switch task.status {
         case .pending: "clock"
@@ -146,6 +150,18 @@ struct TaskRowView: View {
         case .completed: .green
         case .failed: .red
         case .cancelled: .orange
+        }
+    }
+
+    private var statusText: String {
+        switch task.status {
+        case .pending: "等待中"
+        case .processing: task.stage ?? "处理中"
+        case .completed:
+            if task.totalPages > 0 { "\(task.totalPages) 页完成" }
+            else { "完成" }
+        case .failed: "失败"
+        case .cancelled: "已取消"
         }
     }
 }

@@ -2,15 +2,15 @@ import SwiftUI
 import WebKit
 import UniformTypeIdentifiers
 
-import SwiftUI
-import WebKit
-import UniformTypeIdentifiers
-
 struct MarkdownPreviewView: View {
     let task: OCRTask
     @State private var editedContent: String = ""
     @State private var isEditing = false
     @State private var currentPage: Int = 0
+
+    private var isPDF: Bool {
+        task.filePath.lowercased().hasSuffix(".pdf")
+    }
 
     private var pages: [String] {
         (task.markdownContent ?? "").components(separatedBy: "\n\n---\n\n")
@@ -23,6 +23,7 @@ struct MarkdownPreviewView: View {
 
     var body: some View {
         HSplitView {
+            // Left: Markdown preview
             if isEditing {
                 TextEditor(text: $editedContent)
                     .font(.body.monospaced())
@@ -32,14 +33,21 @@ struct MarkdownPreviewView: View {
                     .frame(minWidth: 300)
             }
 
+            // Right: Preview (PDF or image)
             if FileManager.default.fileExists(atPath: task.filePath) {
-                PDFPreviewView(
-                    url: URL(fileURLWithPath: task.filePath),
-                    currentPage: $currentPage
-                )
-                .frame(minWidth: 300, minHeight: 400)
+                if isPDF {
+                    PDFPreviewView(
+                        url: URL(fileURLWithPath: task.filePath),
+                        currentPage: $currentPage
+                    )
+                    .frame(minWidth: 300, minHeight: 400)
+                } else {
+                    ImagePreviewView(url: URL(fileURLWithPath: task.filePath))
+                        .frame(minWidth: 300, minHeight: 400)
+                }
             }
         }
+        .id(task.id)  // Force rebuild on task switch
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
@@ -134,7 +142,9 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 }
 
-// MARK: - PDF Preview View
+// MARK: - PDF Preview
+
+import PDFKit
 
 struct PDFPreviewView: NSViewRepresentable {
     let url: URL
@@ -152,7 +162,10 @@ struct PDFPreviewView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: PDFKitView, context: Context) {
-        nsView.goToPage(currentPage)
+        // Only navigate if the target page differs (prevents feedback loop)
+        if nsView.currentPageIndex != currentPage {
+            nsView.goToPage(currentPage)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -161,8 +174,6 @@ struct PDFPreviewView: NSViewRepresentable {
         var observer: NSKeyValueObservation?
     }
 }
-
-import PDFKit
 
 final class PDFKitView: NSView {
     private let pdfView = PDFView()
@@ -212,4 +223,23 @@ final class PDFKitView: NSView {
             }
         }
     }
+}
+
+// MARK: - Image Preview
+
+import AppKit
+
+struct ImagePreviewView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.imageScaling = .scaleProportionallyDown
+        if let image = NSImage(contentsOf: url) {
+            view.image = image
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSImageView, context: Context) {}
 }
