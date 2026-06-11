@@ -4,19 +4,27 @@ import UniformTypeIdentifiers
 
 struct MarkdownPreviewView: View {
     let task: OCRTask
+    @ObservedObject private var queueManager = TaskQueueManager.shared
     @State private var isEditing = false
     @State private var currentPage: Int = 0
-    @State private var editText: String = ""         // current TextEditor content
+    @State private var editText: String = ""
     @State private var pageEdits: [Int: String] = [:]
     @State private var dirtyPages: Set<Int> = []
     @State private var didInitialLoad = false
 
+    /// Live task from queue manager (reflects saves)
+    private var liveTask: OCRTask? {
+        queueManager.tasks.first(where: { $0.id == task.id })
+    }
+    private var markdownContent: String {
+        liveTask?.markdownContent ?? task.markdownContent ?? ""
+    }
     private var isPDF: Bool { task.filePath.lowercased().hasSuffix(".pdf") }
 
     private let separator = "\n\n---\n\n"
 
     private var pages: [String] {
-        (task.markdownContent ?? "").components(separatedBy: separator)
+        markdownContent.components(separatedBy: separator)
     }
     private var pageCount: Int { max(pages.count, 1) }
 
