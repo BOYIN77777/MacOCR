@@ -8,6 +8,16 @@ _writable_dir = os.path.expanduser("~/Library/Application Support/MacOCR")
 os.makedirs(_writable_dir, exist_ok=True)
 os.chdir(_writable_dir)
 
+# Log startup diagnostics to /tmp (always writable, even in sandbox)
+import sys, tempfile
+_log_path = os.path.join(tempfile.gettempdir(), "macocr_backend.log")
+sys.stderr = open(_log_path, "a")
+print(f"MacOCR backend starting, cwd={os.getcwd()}, home={os.path.expanduser('~')}", flush=True)
+
+from .core.config import get_config_path, load_or_create_config
+os.environ["MINERU_TOOLS_CONFIG_JSON"] = str(get_config_path())
+load_or_create_config()
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +36,6 @@ logger = logging.getLogger("macocr-backend")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("MacOCR backend starting up")
-    from .core.config import load_or_create_config
-    load_or_create_config()
-    logger.info("Configuration loaded")
     yield
     logger.info("MacOCR backend shutting down")
 
